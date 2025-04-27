@@ -1,0 +1,15 @@
+{
+  "name": "redis-source",
+  "config": {
+    "connector.class": "org.apache.kafka.connect.redis.RedisSourceConnector",
+    "tasks.max": "1",
+    "redis.uri": "redis://redis:6379",
+    "redis.channels": "*",
+    "redis.password": "",
+    "topic": "redis-server",
+    "key.converter": "org.apache.kafka.connect.converters.ByteArrayConverter",
+    "value.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter.schemas.enable": "false",
+    "redis.serialization.feature.fail.on.empty.beans": "false"
+  }
+}

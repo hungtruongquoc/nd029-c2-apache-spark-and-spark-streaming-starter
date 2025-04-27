@@ -172,3 +172,10 @@ docker logs -f nd029-c2-apache-spark-and-spark-streaming_stedi_1
 
 - Upload at least two screenshots of the working graph to the screenshots workspace folder 
 
+## References
+
+### Kafka Topic Creation
+
+```bash
+docker exec -it nd029-c2-apache-spark-and-spark-streaming-starter-kafka-1 kafka-topics --create --topic customer-risk-topic --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1
+```

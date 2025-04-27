@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, to_json, col, unbase64, base64, split, expr
-from pyspark.sql.types import StructField, StructType, StringType, BooleanType, ArrayType, DateType
+from pyspark.sql.types import StructField, StructType, StringType, BooleanType, ArrayType, DateType, FloatType
 
 # TO-DO: create a StructType for the Kafka redis-server topic which has all changes made to Redis - before Spark 3.0.0, schema inference is not automatic
 
@@ -94,4 +94,86 @@ from pyspark.sql.types import StructField, StructType, StringType, BooleanType, 
 
 # Run the python script by running the command from the terminal:
 # /home/workspace/submit-redis-kafka-streaming.sh
-# Verify the data looks correct 
+# Verify the data looks correct
+
+# Create a StructType for the Kafka redis-server topic which has all changes made to Redis
+redisMessageSchema = StructType(
+    [
+        StructField("key", StringType()),
+        StructField("existType", StringType()),
+        StructField("ch", BooleanType()),
+        StructField("incr", BooleanType()),
+        StructField("zSetEntries", ArrayType(
+            StructType([
+                StructField("element", StringType()),
+                StructField("score", FloatType())
+            ])
+        ))
+    ]
+)
+
+# Create a StructType for the Customer JSON that comes from Redis
+customerJSONSchema = StructType(
+    [
+        StructField("customerName", StringType()),
+        StructField("email", StringType()),
+        StructField("phone", StringType()),
+        StructField("birthDay", StringType())
+    ]
+)
+
+# Create a spark application object
+spark = SparkSession.builder.appName("STEDI-Redis-Stream-Console").getOrCreate()
+
+# Set the spark log level to WARN
+spark.sparkContext.setLogLevel("WARN")
+
+# Using the spark application object, read a streaming dataframe from the Kafka topic redis-server as the source
+redisServerRawStreamingDF = spark \
+    .readStream \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", "kafka:19092") \
+    .option("subscribe", "redis-server") \
+    .option("startingOffsets", "earliest") \
+    .load()
+
+# Cast the value column in the streaming dataframe as a STRING
+redisServerStreamingDF = redisServerRawStreamingDF.selectExpr("cast(key as string) key", "cast(value as string) value")
+
+# Parse the single column "value" with a json object in it
+redisServerStreamingDF.withColumn("value", from_json("value", redisMessageSchema)) \
+    .select(col("value.*")) \
+    .createOrReplaceTempView("RedisSortedSet")
+
+# Execute a sql statement against a temporary view, which statement takes the element field from the 0th element in the array of structs
+encodedCustomerDF = spark.sql("SELECT key, zSetEntries[0].element as encodedCustomer FROM RedisSortedSet")
+
+# Take the encodedCustomer column which is base64 encoded and convert it to a clear JSON
+decodedCustomerDF = encodedCustomerDF \
+    .withColumn("customer", unbase64(encodedCustomerDF.encodedCustomer).cast("string"))
+
+# Parse the JSON in the Customer record and store in a temporary view called CustomerRecords
+decodedCustomerDF \
+    .withColumn("customer", from_json("customer", customerJSONSchema)) \
+    .select(col("customer.*")) \
+    .createOrReplaceTempView("CustomerRecords")
+
+# JSON parsing will set non-existent fields to null, so let's select just the fields we want
+emailAndBirthDayStreamingDF = spark.sql("""
+    SELECT email, birthDay 
+    FROM CustomerRecords
+    WHERE email IS NOT NULL AND birthDay IS NOT NULL
+""")
+
+# Split the birth year as a separate field from the birthday
+emailAndBirthYearStreamingDF = emailAndBirthDayStreamingDF \
+    .withColumn("birthYear", split(col("birthDay"), "-").getItem(0)) \
+    .select("email", "birthYear")
+
+# Sink the emailAndBirthYearStreamingDF dataframe to the console in append mode
+emailAndBirthYearStreamingDF.writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .option("truncate", "false") \
+    .start() \
+    .awaitTermination()

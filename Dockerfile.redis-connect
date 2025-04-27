@@ -1,0 +1,25 @@
+FROM gcr.io/simulation-images/kafka-connect-redis-source
+
+# Create a directory for our custom code
+RUN mkdir -p /opt/custom-code
+
+# Create a Java class that will configure the ObjectMapper
+COPY ObjectMapperConfig.java /opt/custom-code/
+COPY jackson-databind-2.10.2.jar /opt/custom-code/
+
+# Compile the Java class
+RUN cd /opt/custom-code && \
+    javac -cp /opt/custom-code/jackson-databind-2.10.2.jar:/usr/share/java/kafka-connect-redis-source/* ObjectMapperConfig.java
+
+# Copy the compiled class to the classpath
+RUN cp /opt/custom-code/ObjectMapperConfig.class /usr/share/java/kafka-connect-redis-source/
+
+# Set environment variables to disable FAIL_ON_EMPTY_BEANS
+ENV CONNECT_JACKSON_SERIALIZATION_FEATURE_FAIL_ON_EMPTY_BEANS=false
+ENV CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE=false
+
+# Create a custom entrypoint script
+COPY entrypoint.sh /
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

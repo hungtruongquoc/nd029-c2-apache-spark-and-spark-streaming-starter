@@ -38,3 +38,23 @@ You should see 9 containers when you run this command:
 ```
 docker ps
 ```
+
+## Spark Logging Fix
+
+* We modified the docker-compose.yaml file to add a new volume mount that maps your local spark/logs/ directory to /opt/bitnami/spark/logs/ inside the Spark containers.
+* We created a custom log4j.properties file in the spark/logs/ directory to explicitly configure Spark to write logs to a file.
+* We added a new environment variable SPARK_DAEMON_JAVA_OPTS to the Spark containers to use our custom log4j.properties file.
+* We restarted the Spark containers to apply these changes.
+* Now you can see the Spark logs in your local filesystem, which makes it easier to debug and monitor your Spark applications. The logs will be written to the spark/logs/spark.log file, and you can view them using standard tools like cat, head, tail, etc.
+
+## Connector Container Failing
+
+The fix addresses the Jackson serialization issue by:
+
+Adding the environment variable CONNECT_JACKSON_SERIALIZATION_FEATURE_FAIL_ON_EMPTY_BEANS: "false" to the Kafka Connect container, which disables the Jackson feature that was causing the error.
+
+Creating a custom connector configuration file that explicitly sets the serialization settings.
+
+Mounting the configuration file into the container.
+
+Adding a volume for logs to help with debugging if needed.
